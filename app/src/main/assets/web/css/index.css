@@ -183,7 +183,7 @@ video {
   width: 50px !important;
 }
 
-.w160 {
+.w120 {
   width: 120px;
 }
 
@@ -195,6 +195,10 @@ video {
   padding-top: 6px;
 }
 
+.main-color{
+  color: #216eee!important;
+}
+
 .title {
   max-width: calc(100vw - 180px);
   white-space: warp;
@@ -203,11 +207,24 @@ video {
 
 .link {
   color: #216eee;
+  /* text-align: center; */
+  height: 32px;
+  /* width: 120px; */
+  line-height: 32px;
+  /* text-decoration: underline; */
+  /* border: 1px solid #216eee; */
 }
 
 .flex {
   display: flex;
   justify-content: start;
+}
+
+.borderTop {
+  border-top: 1px solid #f6f6f6;
+}
+.borderLeft {
+  border-left: 1px solid #f6f6f6;
 }
 
 .flex-space-between {
@@ -290,6 +307,13 @@ video {
   color: #216eee;
 }
 
+.dialog-footer-btn {
+  height: 45px;
+  line-height: 48px;
+  flex: 1;
+  text-align: center;
+}
+
 .dialog-list .van-checkbox__label--disabled {
   color: #323233 !important;
 }
@@ -321,27 +345,44 @@ video {
   line-height: 30px !important;
 }
 
-.dialog-list .van-list{
-will-change: scroll-position!important;
+.dialog-list {
+  padding:0 20px 0 12px;
+  position: relative;
+  border-top: 1px solid #f6f6f6;
 }
 
-.van-list::-webkit-scrollbar {
-  width: 20px !important;
-  height: 20px !important;
-}
+.dialog-list .dialog-list-item {
+  padding: 5px 0;
+  }
 
-.van-list::-webkit-scrollbar-vertical {
-  min-width: 20px !important;
+.dialog-list .dialog-list-container {
+  width: 100%;
+  overflow: hidden;
 }
-
-.van-list::-webkit-scrollbar-thumb {
-  min-width: 20px !important;
+.dialog-list .dialog-list-content {
+  width: 100%;
+  max-height: 70vh;
+  overflow-y: scroll;
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* Internet Explorer 10+ */
 }
-
-.van-list::-webkit-scrollbar-track {
-  background-color: white !important;
+.dialog-list .dialog-list-content::-webkit-scrollbar {
+  display: none; /* Safari and Chrome */
 }
-
-.van-list::-webkit-scrollbar-thumb {
-  background-color: gray !important;
+.dialog-list .scrollbar {
+  position: absolute;
+  top: 0;
+  right: 2px;
+  width: 10px;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.1);
+}
+.dialog-list .thumb {
+  position: absolute;
+  top: 0;
+  right:0;
+  width: 10px;
+  height: 50px;
+  background: rgba(0, 0, 0, 0.5);
+  border-radius: 5px;
 }

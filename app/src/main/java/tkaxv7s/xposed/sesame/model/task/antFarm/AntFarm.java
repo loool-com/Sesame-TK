@@ -105,6 +105,9 @@ public class AntFarm extends ModelTask {
     private ChoiceModelField hireAnimalType;
     private SelectModelField hireAnimalList;
     private BooleanModelField enableDdrawGameCenterAward;
+    private BooleanModelField getFeed;
+    private SelectModelField getFeedlList;
+    private ChoiceModelField getFeedType;
 
     @Override
     public ModelFields getFields() {
@@ -115,6 +118,9 @@ public class AntFarm extends ModelTask {
         modelFields.addField(rewardFriend = new BooleanModelField("rewardFriend", "打赏好友", false));
         modelFields.addField(feedAnimal = new BooleanModelField("feedAnimal", "自动喂小鸡", false));
         modelFields.addField(feedFriendAnimalList = new SelectAndCountModelField("feedFriendAnimalList", "喂小鸡好友列表", new LinkedHashMap<>(), AlipayUser::getList));
+        modelFields.addField(getFeed = new BooleanModelField("getFeed", "一起拿饲料", false));
+        modelFields.addField(getFeedType = new ChoiceModelField("getFeedType", "一起拿饲料 | 动作", GetFeedType.GIVE, GetFeedType.nickNames));
+        modelFields.addField(getFeedlList = new SelectModelField("getFeedlList", "一起拿饲料 | 好友列表", new LinkedHashSet<>(), AlipayUser::getList));
         modelFields.addField(acceptGift = new BooleanModelField("acceptGift", "收麦子", false));
         modelFields.addField(visitFriendList = new SelectAndCountModelField("visitFriendList", "送麦子好友列表", new LinkedHashMap<>(), AlipayUser::getList));
         modelFields.addField(hireAnimal = new BooleanModelField("hireAnimal", "雇佣小鸡 | 开启", false));
@@ -350,6 +356,10 @@ public class AntFarm extends ModelTask {
             // 雇佣小鸡
             if (hireAnimal.getValue()) {
                 hireAnimal();
+            }
+
+            if (getFeed.getValue()) {
+                letsGetChickenFeedTogether();
             }
 
             // 开宝箱
@@ -1958,6 +1968,10 @@ public class AntFarm extends ModelTask {
                 return;
             }
             Log.farm("雇佣小鸡👷[当前可雇佣小鸡数量:" + (3 - animalCount) + "只]");
+            if (foodStock < 50) {
+                Log.record("饲料不足，暂不雇佣");
+                return;
+            }
             Set<String> hireAnimalSet = hireAnimalList.getValue();
             boolean hasNext;
             int pageStartSum = 0;
@@ -2171,6 +2185,90 @@ public class AntFarm extends ModelTask {
             Log.printStackTrace(TAG, t);
         }
     }
+    // 一起拿小鸡饲料
+    private void letsGetChickenFeedTogether() {
+        try {
+            JSONObject jo = new JSONObject(AntFarmRpcCall.letsGetChickenFeedTogether());
+            if (jo.getBoolean("success")) {
+                String bizTraceId = jo.getString("bizTraceId");
+                JSONArray p2pCanInvitePersonDetailList = jo.getJSONArray("p2pCanInvitePersonDetailList");
+
+                // 统计可邀请和已邀请的数量
+                int canInviteCount = 0;
+                int hasInvitedCount = 0;
+
+                List<String> userIdList = new ArrayList<>(); // 保存 userId
+                for (int i = 0; i < p2pCanInvitePersonDetailList.length(); i++) {
+                    JSONObject personDetail = p2pCanInvitePersonDetailList.getJSONObject(i);
+                    String inviteStatus = personDetail.getString("inviteStatus");
+                    String userId = personDetail.getString("userId");
+
+                    userIdList.add(userId); // 将 userId 存起来
+
+                    // 统计可邀请和已邀请的数量
+                    if (inviteStatus.equals("CAN_INVITE")) {
+                        canInviteCount++;
+                    } else if (inviteStatus.equals("HAS_INVITED")) {
+                        hasInvitedCount++;
+                    }
+                }
+
+                // 判断今天已经邀请了多少人
+                int invitedToday = hasInvitedCount;
+
+                // 可以邀请的人数不超过五个
+                int remainingInvites = 5 - invitedToday;
+                int invitesToSend = Math.min(canInviteCount, remainingInvites);
+
+                if (invitesToSend==0)
+                    return;
+                Set<String> getFeedSet = getFeedlList.getValue();
+
+                // 判断 getFeedType 的值来确定是根据勾选列表还是随机选择发送邀请
+                if (getFeedType.getValue() == GetFeedType.GIVE) {
+                    // 根据勾选列表进行邀请操作
+                    for (int j = 0; j < invitesToSend; j++) {
+                        String userId = userIdList.get(j);
+                        // 判断 userId 是否存在于 getFeedSet 中
+                        if (getFeedSet.contains(userId)) {
+                            // 调用邀请方法
+                            jo = new JSONObject(AntFarmRpcCall.giftOfFeed(bizTraceId, userId));
+                            if (jo.getBoolean("success")) {
+                                Log.record("一起拿小鸡饲料🥡 [送饲料：" + UserIdMap.getMaskName(userId) + "]");
+                            } else {
+                                Log.record("邀请失败：" + jo);
+                                break; // 如果邀请失败，根据需求处理中断操作
+                            }
+                        } else {
+//                             Log.record("用户 " + userId + " 不在勾选的好友列表中，不发送邀请。");
+                        }
+                    }
+                } else {
+                    // 随机选择发送邀请操作
+                    Random random = new Random();
+                    for (int j = 0; j < invitesToSend; j++) {
+                        int randomIndex = random.nextInt(userIdList.size());
+                        String userId = userIdList.get(randomIndex);
+                        // 调用邀请方法
+                        jo = new JSONObject(AntFarmRpcCall.giftOfFeed(bizTraceId, userId));
+                        if (jo.getBoolean("success")) {
+                            Log.record("一起拿小鸡饲料🥡 [送饲料：" + UserIdMap.getMaskName(userId) + "]");
+                        } else {
+                            Log.record("邀请失败：" + jo);
+                            break; // 如果邀请失败，根据需求处理中断操作
+                        }
+                        // 从列表中移除已经尝试过的用户ID，确保不重复邀请同一个人
+                        userIdList.remove(randomIndex);
+                    }
+                }
+
+
+            }
+        } catch (JSONException e) {
+            Log.i(TAG, "letsGetChickenFeedTogether err:");
+            Log.printStackTrace(e);
+        }
+    }
 
     public interface DonationCount {
 
@@ -2280,6 +2378,14 @@ public class AntFarm extends ModelTask {
         int DONT_HIRE = 1;
 
         String[] nickNames = {"选中雇佣", "选中不雇佣"};
+
+    }
+    public interface GetFeedType {
+
+        int GIVE = 0;
+        int RANDOM = 1;
+
+        String[] nickNames = {"选中赠送", "随机送"};
 
     }
 
