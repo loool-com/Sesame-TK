@@ -3,7 +3,8 @@ apply plugin: 'com.android.application'
 android {
     def version = project.getProperties().get("version")
     if (version == null || "unspecified".equalsIgnoreCase(version)) {
-        version = "TEST"
+        //TEST
+        version = "v1.3.0-TK"
     }
 
     compileSdk 34
