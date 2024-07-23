@@ -4,7 +4,7 @@ android {
     def version = project.getProperties().get("version")
     if (version == null || "unspecified".equalsIgnoreCase(version)) {
         //TEST
-        version = "v1.3.0-TK"
+        version = "v1.3.1-TK"
     }
 
     compileSdk 34
