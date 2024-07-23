@@ -3,6 +3,7 @@ package tkaxv7s.xposed.sesame.model.task.antSports;
 import de.robv.android.xposed.XC_MethodHook;
 import de.robv.android.xposed.XposedHelpers;
 import org.json.JSONArray;
+import org.json.JSONException;
 import org.json.JSONObject;
 import tkaxv7s.xposed.sesame.data.ModelFields;
 import tkaxv7s.xposed.sesame.data.ModelGroup;
@@ -17,25 +18,20 @@ import tkaxv7s.xposed.sesame.model.base.TaskCommon;
 import tkaxv7s.xposed.sesame.model.normal.base.BaseModel;
 import tkaxv7s.xposed.sesame.util.*;
 
+import java.text.SimpleDateFormat;
+import java.util.ArrayList;
 import java.util.Calendar;
+import java.util.Date;
 import java.util.LinkedHashSet;
+import java.util.List;
 
 public class AntSports extends ModelTask {
 
     private static final String TAG = AntSports.class.getSimpleName();
 
     private int tmpStepCount = -1;
-
-    @Override
-    public String getName() {
-        return "运动";
-    }
-
-    @Override
-    public ModelGroup getGroup() {
-        return ModelGroup.SPORTS;
-    }
-
+    private BooleanModelField walkGo;
+    private String pathId = "p0002023122214520001";
     private BooleanModelField openTreasureBox;
     private BooleanModelField receiveCoinAsset;
     private BooleanModelField donateCharityCoin;
@@ -48,11 +44,24 @@ public class AntSports extends ModelTask {
     private BooleanModelField battleForFriends;
     private ChoiceModelField battleForFriendType;
     private SelectModelField originBossIdList;
+    private BooleanModelField sportsTasks;
+
+    @Override
+    public String getName() {
+        return "运动";
+    }
+
+    @Override
+    public ModelGroup getGroup() {
+        return ModelGroup.SPORTS;
+    }
 
     @Override
     public ModelFields getFields() {
         ModelFields modelFields = new ModelFields();
+        modelFields.addField(walkGo = new BooleanModelField("walkGo", "行走路线", false));
         modelFields.addField(openTreasureBox = new BooleanModelField("openTreasureBox", "开启宝箱", false));
+        modelFields.addField(sportsTasks = new BooleanModelField("sportsTasks", "开启运动任务", false));
         modelFields.addField(receiveCoinAsset = new BooleanModelField("receiveCoinAsset", "收运动币", false));
         modelFields.addField(donateCharityCoin = new BooleanModelField("donateCharityCoin", "捐运动币 | 开启", false));
         modelFields.addField(donateCharityCoinType = new ChoiceModelField("donateCharityCoinType", "捐运动币 | 方式", DonateCharityCoinType.ONE, DonateCharityCoinType.nickNames));
@@ -113,12 +122,15 @@ public class AntSports extends ModelTask {
                     }
                 }));
             }
-            ClassLoader loader = ApplicationHook.getClassLoader();
-            if (openTreasureBox.getValue())
-                queryMyHomePage(loader);
+            if (sportsTasks.getValue())
+                sportsTasks();
 
-            if (receiveCoinAsset.getValue())
-                receiveCoinAsset();
+            ClassLoader loader = ApplicationHook.getClassLoader();
+            if (walkGo.getValue()) {
+                walkGo(pathId);
+            }
+            if (openTreasureBox.getValue() && !walkGo.getValue())
+                queryMyHomePage(loader);
 
             if (donateCharityCoin.getValue() && Status.canDonateCharityCoin())
                 queryProjectList(loader);
@@ -139,6 +151,9 @@ public class AntSports extends ModelTask {
                 queryTrainItem();
                 buyMember();
             }
+
+            if (receiveCoinAsset.getValue())
+                receiveCoinAsset();
         } catch (Throwable t) {
             Log.i(TAG, "start.run err:");
             Log.printStackTrace(TAG, t);
@@ -158,6 +173,53 @@ public class AntSports extends ModelTask {
         }
         return tmpStepCount;
     }
+
+    // 运动
+    private void sportsTasks() {
+        try {
+            Log.record("运动任务开始");
+
+            JSONObject jo = new JSONObject(AntSportsRpcCall.queryCoinTaskPanel());
+            if (jo.getBoolean("success")) {
+                JSONObject data = jo.getJSONObject("data");
+                JSONArray taskList = data.getJSONArray("taskList");
+
+                for (int i = 0; i < taskList.length(); i++) {
+                    JSONObject taskDetail = taskList.getJSONObject(i);
+
+                    String taskId = taskDetail.getString("taskId");
+                    String taskName = taskDetail.getString("taskName");
+                    String prizeAmount = taskDetail.getString("prizeAmount");
+                    String taskStatus = taskDetail.getString("taskStatus");
+                    int currentNum = taskDetail.getInt("currentNum");
+                    // 要完成的次数
+                    int limitConfigNum = taskDetail.getInt("limitConfigNum")-currentNum;
+
+                    if (taskStatus.equals("HAS_RECEIVED"))
+                        return;
+                    for (int i1 = 0; i1 < limitConfigNum; i1++) {
+                        jo = new JSONObject(AntSportsRpcCall.completeExerciseTasks(taskId));
+                        if (jo.getBoolean("success")) {
+                            Log.record("做任务得运动币👯[完成任务：" + taskName + "，得" + prizeAmount + "🪙]");
+//                                Log.record(jo.toString());
+                            receiveCoinAsset();
+                        }else {
+//                                Log.record(jo.toString());
+                        }
+                        if (limitConfigNum>1)
+                            Thread.sleep(5000);
+                        else
+                            Thread.sleep(1000);
+                    }
+
+
+                }
+            }
+        } catch (Exception e) {
+            Log.printStackTrace(e);
+        }
+    }
+
 
     private void receiveCoinAsset() {
         try {
@@ -184,6 +246,105 @@ public class AntSports extends ModelTask {
             }
         } catch (Throwable t) {
             Log.i(TAG, "receiveCoinAsset err:");
+            Log.printStackTrace(TAG, t);
+        }
+    }
+
+    private void walkGo(String pathId) {
+        try {
+            JSONObject user = new JSONObject(AntSportsRpcCall.queryUser());
+            if (!user.getBoolean("success")) {
+                return;
+            }
+            String joinedPathId = user.getJSONObject("data").getString("joinedPathId");
+            if (joinedPathId == null) {
+                joinPath(pathId);
+                return;
+            }
+            JSONObject path = queryPath(joinedPathId);
+            JSONObject userPathStep = path.getJSONObject("userPathStep");
+            if ("COMPLETED".equals(userPathStep.getString("pathCompleteStatus"))) {
+                Log.record("完成路线🚶🏻‍♂️[" + userPathStep.getString("pathName") + "]");
+                joinPath(pathId);
+                return;
+            }
+            int minGoStepCount = path.getJSONObject("path").getInt("minGoStepCount");
+            int pathStepCount = path.getJSONObject("path").getInt("pathStepCount");
+            int forwardStepCount = userPathStep.getInt("forwardStepCount");
+            int remainStepCount = userPathStep.getInt("remainStepCount");
+            int needStepCount = pathStepCount - forwardStepCount;
+            if  (remainStepCount >= minGoStepCount) {
+                int useStepCount = Math.min(remainStepCount, needStepCount);
+                walkGo(userPathStep.getString("pathId"), useStepCount, userPathStep.getString("pathName"));
+            }
+        } catch (Throwable t) {
+            Log.i(TAG, "walkGo err:");
+            Log.printStackTrace(TAG, t);
+        }
+    }
+
+    private void walkGo(String pathId, int useStepCount, String pathName) {
+        try {
+            Date date = new Date();
+            SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd");
+            JSONObject jo = new JSONObject(AntSportsRpcCall.walkGo("202312191135", sdf.format(date), pathId, useStepCount));
+            if (jo.getBoolean("success")) {
+                Log.record("行走路线🚶🏻‍♂️[" + pathName + "]#前进了" + useStepCount + "步");
+                queryPath(pathId);
+            }
+        } catch (Throwable t) {
+            Log.i(TAG, "walkGo err:");
+            Log.printStackTrace(TAG, t);
+        }
+    }
+
+    private JSONObject queryPath(String pathId) {
+        JSONObject path = null;
+        try {
+            Date date = new Date();
+            SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd");
+            JSONObject jo = new JSONObject(AntSportsRpcCall.queryPath("202312191135", sdf.format(date), pathId));
+            if (jo.getBoolean("success")) {
+                path = jo.getJSONObject("data");
+                JSONArray ja = jo.getJSONObject("data").getJSONArray("treasureBoxList");
+                for (int i = 0; i < ja.length(); i++) {
+                    JSONObject treasureBox = ja.getJSONObject(i);
+                    receiveEvent(treasureBox.getString("boxNo"));
+                }
+            }
+        } catch (Throwable t) {
+            Log.i(TAG, "queryPath err:");
+            Log.printStackTrace(TAG, t);
+        }
+        return path;
+    }
+
+    private void receiveEvent(String eventBillNo) {
+        try {
+            JSONObject jo = new JSONObject(AntSportsRpcCall.receiveEvent(eventBillNo));
+            if (!jo.getBoolean("success")) {
+                return;
+            }
+            JSONArray ja = jo.getJSONObject("data").getJSONArray("rewards");
+            for (int i = 0; i < ja.length(); i++) {
+                jo = ja.getJSONObject(i);
+                Log.record("行走路线🎁开宝箱获得[" + jo.getString("rewardName") + "]*" + jo.getInt("count"));
+            }
+        } catch (Throwable t) {
+            Log.i(TAG, "receiveEvent err:");
+            Log.printStackTrace(TAG, t);
+        }
+    }
+
+    private void joinPath(String pathId) {
+        try {
+            JSONObject jo = new JSONObject(AntSportsRpcCall.joinPath(pathId));
+            if (jo.getBoolean("success")) {
+                JSONObject path = queryPath(pathId);
+                Log.record("加入路线🚶🏻‍♂️[" + path.getJSONObject("path").getString("name") + "]");
+            }
+        } catch (Throwable t) {
+            Log.i(TAG, "joinPath err:");
             Log.printStackTrace(TAG, t);
         }
     }
